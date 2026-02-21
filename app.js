@@ -1,4 +1,4 @@
-app.js  // Tasks Board Functionality
+// Tasks Board Functionality
 
 const tasks = [];
 
