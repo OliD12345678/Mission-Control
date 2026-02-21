@@ -1,0 +1,37 @@
+ index.html  <!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mission Control</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <h1>Mission Control</h1>
+
+    <div id="tasks-board">
+        <h2>Tasks Board</h2>
+        <form id="addTaskForm" onsubmit="event.preventDefault(); addTask(document.getElementById('taskTitle').value, document.getElementById('assignedTo').value);">
+            <input type="text" id="taskTitle" placeholder="Task Title" required>
+            <input type="text" id="assignedTo" placeholder="Assigned To" required>
+            <button type="submit">Add Task</button>
+        </form>
+        <div class="column" id="to-do">
+            <h3>To Do</h3>
+            <!-- Task cards will be populated here -->
+        </div>
+        <div class="column" id="in-progress">
+            <h3>In Progress</h3>
+            <!-- Task cards will be populated here -->
+        </div>
+        <div class="column" id="completed">
+            <h3>Completed</h3>
+            <!-- Task cards will be populated here -->
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+    <script src="scripts/extract.mjs"></script>
+    <script src="scripts/search.mjs"></script>
+</body>
+</html>
