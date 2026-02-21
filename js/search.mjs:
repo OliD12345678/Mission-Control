@@ -1,0 +1,117 @@
+Here are the main files you need for your Mission Control dashboard:
+
+1. index.html
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mission Control</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <h1>Mission Control</h1>
+
+    <div id="tasks-board">
+        <h2>Tasks Board</h2>
+        <form id="addTaskForm" onsubmit="event.preventDefault(); addTask(document.getElementById('taskTitle').value, document.getElementById('assignedTo').value);">
+            <input type="text" id="taskTitle" placeholder="Task Title" required>
+            <input type="text" id="assignedTo" placeholder="Assigned To" required>
+            <button type="submit">Add Task</button>
+        </form>
+        <div class="column" id="to-do">
+            <h3>To Do</h3>
+            <!-- Task cards will be populated here -->
+        </div>
+        <div class="column" id="in-progress">
+            <h3>In Progress</h3>
+            <!-- Task cards will be populated here -->
+        </div>
+        <div class="column" id="completed">
+            <h3>Completed</h3>
+            <!-- Task cards will be populated here -->
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+    <script src="scripts/extract.mjs"></script>
+    <script src="scripts/search.mjs"></script>
+</body>
+</html>
+
+2. app.js
+
+// Tasks Board Functionality
+
+const tasks = [];
+
+// Function to add a task
+function addTask(title, assignedTo) {
+    const task = { title, assignedTo, status: 'To Do' };
+    tasks.push(task);
+    updateBoard();
+}
+
+// Function to move a task between columns
+function moveTask(taskIndex, newStatus) {
+    if (tasks[taskIndex]) {
+        tasks[taskIndex].status = newStatus;
+        updateBoard();
+    }
+}
+
+// Function to update board display
+function updateBoard() {
+    const toDoColumn = document.getElementById('to-do');
+    const inProgressColumn = document.getElementById('in-progress');
+    const completedColumn = document.getElementById('completed');
+
+    // Clear existing cards
+    toDoColumn.innerHTML = '';
+    inProgressColumn.innerHTML = '';
+    completedColumn.innerHTML = '';
+
+    // Populate columns with task cards
+    tasks.forEach((task, index) => {
+        const taskCard = document.createElement('div');
+        taskCard.className = 'task-card';
+        taskCard.innerHTML = `<strong>${task.title}</strong><br>Assigned to: ${task.assignedTo}<br>Status: ${task.status}`;
+        taskCard.setAttribute('draggable', true);
+        taskCard.addEventListener('dragstart', (e) => {
+            e.dataTransfer.setData('text/plain', index);
+        });
+
+        if (task.status === 'To Do') {
+            toDoColumn.appendChild(taskCard);
+        } else if (task.status === 'In Progress') {
+            inProgressColumn.appendChild(taskCard);
+        } else if (task.status === 'Completed') {
+            completedColumn.appendChild(taskCard);
+        }
+    });
+}
+
+// Function to handle drop event
+function dropTask(event, newStatus) {
+    event.preventDefault();
+    const taskIndex = event.dataTransfer.getData('text/plain');
+    moveTask(taskIndex, newStatus);
+}
+
+// Event listeners for drop zones
+document.getElementById('to-do').addEventListener('drop', (e) => dropTask(e, 'To Do'));
+document.getElementById('in-progress').addEventListener('drop', (e) => dropTask(e, 'In Progress'));
+document.getElementById('completed').addEventListener('drop', (e) => dropTask(e, 'Completed'));
+document.getElementById('to-do').addEventListener('dragover', (e) => e.preventDefault());
+document.getElementById('in-progress').addEventListener('dragover', (e) => e.preventDefault());
+document.getElementById('completed').addEventListener('dragover', (e) => e.preventDefault());
+
+// Example usage
+addTask('Follow up with leads', 'User');
+
+3. Additional JavaScript Files
+
+• extract.mjs and search.mjs: Include any specific functionality you want these scripts to handle.
+
+Upload Instructions
