@@ -1,7 +1,7 @@
-- status: pending
+- status: pr_opened
   task: Fix Postiz TikTok connect reliability
 
-- status: pending
+- status: pr_opened
   task: Add alert if Postiz container unhealthy
 
 - status: pending
