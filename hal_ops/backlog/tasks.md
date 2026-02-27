@@ -4,7 +4,7 @@
 - status: pr_opened
   task: Add alert if Postiz container unhealthy
 
-- status: pending
+- status: pr_opened
   task: Add auto cleanup of Docker images weekly
 
 - status: pending
