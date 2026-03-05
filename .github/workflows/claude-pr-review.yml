@@ -1,0 +1,54 @@
+name: Claude PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Anthropic SDK
+        run: pip install anthropic
+
+      - name: Get PR diff
+        run: |
+          git fetch origin ${{ github.base_ref }}
+          git diff origin/${{ github.base_ref }} > diff.txt
+
+      - name: Run Claude review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python - <<EOF
+          import os
+          from anthropic import Anthropic
+
+          client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+
+          diff = open("diff.txt").read()
+
+          prompt = f"""
+          Review this pull request diff like a senior engineer.
+          Look for bugs, security problems, logic errors, and improvements.
+
+          DIFF:
+          {diff}
+          """
+
+          response = client.messages.create(
+              model="claude-3-7-sonnet-latest",
+              max_tokens=1200,
+              messages=[{"role":"user","content":prompt}]
+          )
+
+          print(response.content)
+          EOF
