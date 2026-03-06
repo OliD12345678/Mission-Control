@@ -4,8 +4,13 @@ const tasks = [];
 
 // Function to add a task
 function addTask(title, assignedTo) {
-    if (!title || !assignedTo) return;
-    const task = { title, assignedTo, status: 'To Do' };
+    const trimmedTitle = title ? title.trim() : '';
+    const trimmedAssignedTo = assignedTo ? assignedTo.trim() : '';
+    if (!trimmedTitle || !trimmedAssignedTo) {
+        console.warn('addTask rejected: title and assignedTo are required and cannot be empty or whitespace.', { title, assignedTo });
+        return;
+    }
+    const task = { title: trimmedTitle, assignedTo: trimmedAssignedTo, status: 'To Do' };
     tasks.push(task);
     updateBoard();
 }
@@ -66,3 +71,4 @@ document.getElementById('completed').addEventListener('dragover', (e) => e.preve
 
 // Example usage
 addTask('Follow up with leads', 'User');
+
