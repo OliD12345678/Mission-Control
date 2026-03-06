@@ -1,0 +1,115 @@
+name: Claude Autofix
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  autofix:
+    # Only run when someone comments "@claude fix" on a PR
+    if: |
+      github.event.issue.pull_request &&
+      contains(github.event.comment.body, '@claude fix')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get PR details
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_JSON=$(curl -s -H "Authorization: token $GH_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.issue.number }}")
+          echo "head_ref=$(echo $PR_JSON | jq -r '.head.ref')" >> "$GITHUB_OUTPUT"
+          echo "base_ref=$(echo $PR_JSON | jq -r '.base.ref')" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.pr.outputs.head_ref }}
+          fetch-depth: 0
+
+      - name: Get diff
+        id: diff
+        run: |
+          DIFF=$(git diff origin/${{ steps.pr.outputs.base_ref }}...HEAD -- . ':!package-lock.json' ':!*.lock' | head -c 50000)
+          echo "DIFF<<DIFF_EOF" >> "$GITHUB_OUTPUT"
+          echo "$DIFF" >> "$GITHUB_OUTPUT"
+          echo "DIFF_EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Generate fix with Claude
+        id: fix
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          # Get the comment that triggered this (may contain specific instructions)
+          COMMENT="${{ github.event.comment.body }}"
+
+          RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -H "content-type: application/json" \
+            -d "$(jq -n \
+              --arg diff "${{ steps.diff.outputs.DIFF }}" \
+              --arg comment "$COMMENT" \
+              '{
+                model: "claude-sonnet-4-6",
+                max_tokens: 4096,
+                messages: [{
+                  role: "user",
+                  content: ("You are a code fixer for the Mission-Control repository. A reviewer has requested fixes on a pull request.\n\nReviewer comment: " + $comment + "\n\nCurrent diff:\n```\n" + $diff + "\n```\n\nGenerate a unified diff patch that fixes the issues. Output ONLY the patch content, no explanation. The patch should be applicable with `git apply`. Use the exact file paths from the diff above.\n\nIf there are no clear issues to fix, output exactly: NO_FIX_NEEDED")
+                }]
+              }'
+            )")
+
+          PATCH=$(echo "$RESPONSE" | jq -r '.content[0].text // "ERROR"')
+          echo "PATCH<<PATCH_EOF" >> "$GITHUB_OUTPUT"
+          echo "$PATCH" >> "$GITHUB_OUTPUT"
+          echo "PATCH_EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Apply fix and push
+        if: ${{ !contains(steps.fix.outputs.PATCH, 'NO_FIX_NEEDED') && !contains(steps.fix.outputs.PATCH, 'ERROR') }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Try to apply the patch
+          echo "${{ steps.fix.outputs.PATCH }}" > /tmp/fix.patch
+
+          if git apply --check /tmp/fix.patch 2>/dev/null; then
+            git apply /tmp/fix.patch
+            git config user.name "Claude Autofix"
+            git config user.email "claude-autofix@users.noreply.github.com"
+            git add -A
+            git commit -m "autofix: apply Claude-suggested changes"
+            git push origin ${{ steps.pr.outputs.head_ref }}
+
+            # Comment on PR
+            curl -s -X POST \
+              -H "Authorization: token $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments" \
+              -d '{"body": "🔧 **Claude Autofix**\n\nI'\''ve applied fixes and pushed them to this branch. Please review the latest commit."}'
+          else
+            # Patch didn't apply cleanly — post the suggestion as a comment instead
+            PATCH_CONTENT=$(cat /tmp/fix.patch | head -100)
+            curl -s -X POST \
+              -H "Authorization: token $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments" \
+              -d "$(jq -n --arg body "🔧 **Claude Autofix**\n\nI couldn't apply the patch cleanly, but here's my suggested fix:\n\n\`\`\`diff\n${PATCH_CONTENT}\n\`\`\`\n\nYou can apply this manually or adjust as needed." '{body: $body}')"
+          fi
+
+      - name: No fix needed
+        if: contains(steps.fix.outputs.PATCH, 'NO_FIX_NEEDED')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          curl -s -X POST \
+            -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments" \
+            -d '{"body": "🔧 **Claude Autofix**\n\nI reviewed the code and didn'\''t find any clear issues to fix. The changes look good."}'
