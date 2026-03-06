@@ -32,79 +32,111 @@ jobs:
         with:
           ref: ${{ steps.pr.outputs.head_ref }}
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Get diff
-        id: diff
+      - name: Collect changed files
+        id: files
         run: |
-          DIFF=$(git diff origin/${{ steps.pr.outputs.base_ref }}...HEAD -- . ':!package-lock.json' ':!*.lock' | head -c 50000)
-          echo "DIFF<<DIFF_EOF" >> "$GITHUB_OUTPUT"
-          echo "$DIFF" >> "$GITHUB_OUTPUT"
-          echo "DIFF_EOF" >> "$GITHUB_OUTPUT"
+          # Get list of changed files and their contents
+          CHANGED=$(git diff --name-only origin/${{ steps.pr.outputs.base_ref }}...HEAD -- . ':!package-lock.json' ':!*.lock')
+          echo "CHANGED<<FILES_EOF" >> "$GITHUB_OUTPUT"
+          echo "$CHANGED" >> "$GITHUB_OUTPUT"
+          echo "FILES_EOF" >> "$GITHUB_OUTPUT"
 
-      - name: Generate fix with Claude
+          # Build a JSON payload with each file's content
+          FILE_DATA="[]"
+          for f in $CHANGED; do
+            if [ -f "$f" ]; then
+              FILE_DATA=$(echo "$FILE_DATA" | jq --arg path "$f" --arg content "$(cat "$f")" '. + [{"path": $path, "content": $content}]')
+            fi
+          done
+          echo "$FILE_DATA" > /tmp/file_data.json
+
+      - name: Generate fixes with Claude
         id: fix
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          # Get the comment that triggered this (may contain specific instructions)
           COMMENT="${{ github.event.comment.body }}"
+          FILE_DATA=$(cat /tmp/file_data.json)
+          DIFF=$(git diff origin/${{ steps.pr.outputs.base_ref }}...HEAD -- . ':!package-lock.json' ':!*.lock' | head -c 30000)
 
           RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
             -H "x-api-key: $ANTHROPIC_API_KEY" \
             -H "anthropic-version: 2023-06-01" \
             -H "content-type: application/json" \
             -d "$(jq -n \
-              --arg diff "${{ steps.diff.outputs.DIFF }}" \
+              --arg diff "$DIFF" \
               --arg comment "$COMMENT" \
+              --argjson files "$FILE_DATA" \
               '{
                 model: "claude-sonnet-4-6",
-                max_tokens: 4096,
+                max_tokens: 8192,
                 messages: [{
                   role: "user",
-                  content: ("You are a code fixer for the Mission-Control repository. A reviewer has requested fixes on a pull request.\n\nReviewer comment: " + $comment + "\n\nCurrent diff:\n```\n" + $diff + "\n```\n\nGenerate a unified diff patch that fixes the issues. Output ONLY the patch content, no explanation. The patch should be applicable with `git apply`. Use the exact file paths from the diff above.\n\nIf there are no clear issues to fix, output exactly: NO_FIX_NEEDED")
+                  content: ("You are a code fixer for the Mission-Control repository.\n\nReviewer comment: " + $comment + "\n\nDiff for context:\n```\n" + $diff + "\n```\n\nHere are the current files that were changed:\n" + ($files | map("--- " + .path + " ---\n" + .content) | join("\n\n")) + "\n\nFix the issues mentioned in the review. Output your response as a JSON array of objects with \"path\" and \"content\" fields. Each object should contain the full corrected file content. Output ONLY valid JSON, no markdown fences, no explanation.\n\nIf no fixes are needed, output exactly: NO_FIX_NEEDED")
                 }]
               }'
             )")
 
-          PATCH=$(echo "$RESPONSE" | jq -r '.content[0].text // "ERROR"')
-          echo "PATCH<<PATCH_EOF" >> "$GITHUB_OUTPUT"
-          echo "$PATCH" >> "$GITHUB_OUTPUT"
-          echo "PATCH_EOF" >> "$GITHUB_OUTPUT"
+          # Extract the text response
+          TEXT=$(echo "$RESPONSE" | jq -r '.content[0].text // "ERROR"')
 
-      - name: Apply fix and push
-        if: ${{ !contains(steps.fix.outputs.PATCH, 'NO_FIX_NEEDED') && !contains(steps.fix.outputs.PATCH, 'ERROR') }}
+          if echo "$TEXT" | grep -q "NO_FIX_NEEDED"; then
+            echo "no_fix=true" >> "$GITHUB_OUTPUT"
+          elif echo "$TEXT" | grep -q "ERROR"; then
+            echo "error=true" >> "$GITHUB_OUTPUT"
+            echo "error_msg=$TEXT" >> "$GITHUB_OUTPUT"
+          else
+            # Strip any markdown fences if Claude wrapped them anyway
+            CLEAN=$(echo "$TEXT" | sed '/^```/d')
+            echo "$CLEAN" > /tmp/fixes.json
+
+            # Validate it's JSON
+            if jq empty /tmp/fixes.json 2>/dev/null; then
+              echo "has_fixes=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "error=true" >> "$GITHUB_OUTPUT"
+              echo "error_msg=Invalid JSON response" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      - name: Apply fixes and push
+        if: steps.fix.outputs.has_fixes == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Try to apply the patch
-          echo "${{ steps.fix.outputs.PATCH }}" > /tmp/fix.patch
+          # Write each fixed file
+          COUNT=$(jq length /tmp/fixes.json)
+          for i in $(seq 0 $(($COUNT - 1))); do
+            FILE_PATH=$(jq -r ".[$i].path" /tmp/fixes.json)
+            jq -r ".[$i].content" /tmp/fixes.json > "$FILE_PATH"
+          done
 
-          if git apply --check /tmp/fix.patch 2>/dev/null; then
-            git apply /tmp/fix.patch
+          # Check if there are actual changes
+          if git diff --quiet && git diff --cached --quiet; then
+            curl -s -X POST \
+              -H "Authorization: token $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments" \
+              -d '{"body": "🔧 **Claude Autofix**\n\nNo changes needed — the code already looks correct."}'
+          else
             git config user.name "Claude Autofix"
             git config user.email "claude-autofix@users.noreply.github.com"
             git add -A
+            git diff --cached --stat
             git commit -m "autofix: apply Claude-suggested changes"
             git push origin ${{ steps.pr.outputs.head_ref }}
 
-            # Comment on PR
             curl -s -X POST \
               -H "Authorization: token $GH_TOKEN" \
               -H "Accept: application/vnd.github+json" \
               "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments" \
-              -d '{"body": "🔧 **Claude Autofix**\n\nI'\''ve applied fixes and pushed them to this branch. Please review the latest commit."}'
-          else
-            # Patch didn't apply cleanly — post the suggestion as a comment instead
-            PATCH_CONTENT=$(cat /tmp/fix.patch | head -100)
-            curl -s -X POST \
-              -H "Authorization: token $GH_TOKEN" \
-              -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments" \
-              -d "$(jq -n --arg body "🔧 **Claude Autofix**\n\nI couldn't apply the patch cleanly, but here's my suggested fix:\n\n\`\`\`diff\n${PATCH_CONTENT}\n\`\`\`\n\nYou can apply this manually or adjust as needed." '{body: $body}')"
+              -d '{"body": "🔧 **Claude Autofix**\n\nFixes applied and pushed. Please review the latest commit."}'
           fi
 
       - name: No fix needed
-        if: contains(steps.fix.outputs.PATCH, 'NO_FIX_NEEDED')
+        if: steps.fix.outputs.no_fix == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -112,4 +144,15 @@ jobs:
             -H "Authorization: token $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments" \
-            -d '{"body": "🔧 **Claude Autofix**\n\nI reviewed the code and didn'\''t find any clear issues to fix. The changes look good."}'
+            -d '{"body": "🔧 **Claude Autofix**\n\nReviewed the code — no issues to fix. Changes look good."}'
+
+      - name: Report error
+        if: steps.fix.outputs.error == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          curl -s -X POST \
+            -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments" \
+            -d '{"body": "🔧 **Claude Autofix**\n\nHit an issue generating fixes. Check the workflow logs for details."}'
