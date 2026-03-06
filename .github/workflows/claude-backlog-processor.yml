@@ -32,8 +32,8 @@ jobs:
             exit 0
           fi
 
-          # Extract pending tasks
-          PENDING=$(grep -B1 "status: pending" "$BACKLOG" | grep "task:" | sed 's/.*task: //' || true)
+          # Extract pending tasks (format: "- status: pending" then "  task: ...")
+          PENDING=$(grep -A1 "status: pending" "$BACKLOG" | grep "task:" | sed 's/.*task: //' || true)
 
           if [ -z "$PENDING" ]; then
             echo "No pending tasks"
@@ -98,8 +98,8 @@ jobs:
 
               echo "Created issue: $TITLE"
 
-              # Update backlog status
-              sed -i "/$TASK/{n;s/status: pending/status: issue_created/;}" "$BACKLOG" 2>/dev/null || true
+              # Update backlog status (status line is before the task line)
+              sed -i "/status: pending/{N;/$TASK/s/status: pending/status: issue_created/;}" "$BACKLOG" 2>/dev/null || true
             else
               echo "Failed to parse Claude response for: $TASK"
             fi
