@@ -4,51 +4,65 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   review:
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Python
-        uses: actions/setup-python@v5
+      - name: Checkout code
+        uses: actions/checkout@v4
         with:
-          python-version: '3.11'
-
-      - name: Install Anthropic SDK
-        run: pip install anthropic
+          fetch-depth: 0
 
       - name: Get PR diff
+        id: diff
         run: |
-          git fetch origin ${{ github.base_ref }}
-          git diff origin/${{ github.base_ref }} > diff.txt
+          DIFF=$(git diff origin/${{ github.event.pull_request.base.ref }}...origin/${{ github.event.pull_request.head.ref }} -- . ':!package-lock.json' ':!*.lock' | head -c 50000)
+          echo "DIFF<<DIFF_EOF" >> "$GITHUB_OUTPUT"
+          echo "$DIFF" >> "$GITHUB_OUTPUT"
+          echo "DIFF_EOF" >> "$GITHUB_OUTPUT"
 
-      - name: Run Claude review
+      - name: Review with Claude
+        id: review
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          python - <<EOF
-          import os
-          from anthropic import Anthropic
+          RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -H "content-type: application/json" \
+            -d "$(jq -n \
+              --arg diff "${{ steps.diff.outputs.DIFF }}" \
+              --arg title "${{ github.event.pull_request.title }}" \
+              --arg body "${{ github.event.pull_request.body }}" \
+              '{
+                model: "claude-sonnet-4-6",
+                max_tokens: 2048,
+                messages: [{
+                  role: "user",
+                  content: ("You are a code reviewer for the Mission-Control repository. Review this pull request and provide concise, actionable feedback.\n\nPR Title: " + $title + "\nPR Description: " + $body + "\n\nDiff:\n```\n" + $diff + "\n```\n\nProvide your review in this format:\n## Summary\nOne-line summary of the changes.\n\n## Issues\nList any bugs, security issues, or problems. Say \"None found\" if clean.\n\n## Suggestions\nList improvements if any. Keep it practical.\n\n## Verdict\nOne of: Approve / Request Changes / Needs Discussion")
+                }]
+              }'
+            )")
 
-          client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+          REVIEW=$(echo "$RESPONSE" | jq -r '.content[0].text // "Error: Could not get review from Claude. Response: \(.error.message // "unknown error")"')
+          echo "REVIEW<<REVIEW_EOF" >> "$GITHUB_OUTPUT"
+          echo "$REVIEW" >> "$GITHUB_OUTPUT"
+          echo "REVIEW_EOF" >> "$GITHUB_OUTPUT"
 
-          diff = open("diff.txt").read()
-
-          prompt = f"""
-          Review this pull request diff like a senior engineer.
-          Look for bugs, security problems, logic errors, and improvements.
-
-          DIFF:
-          {diff}
-          """
-
-          response = client.messages.create(
-              model="claude-3-7-sonnet-latest",
-              max_tokens=1200,
-              messages=[{"role":"user","content":prompt}]
-          )
-
-          print(response.content)
-          EOF
+      - name: Post review comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const review = process.env.REVIEW;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `🤖 **Claude Code Review**\n\n${review}`
+            });
+        env:
+          REVIEW: ${{ steps.review.outputs.REVIEW }}
