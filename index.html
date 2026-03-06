@@ -39,6 +39,8 @@
     .live-dot{width:9px;height:9px;border-radius:50%;background:#4ade80;display:inline-block;margin-right:7px;animation:lp 1.5s infinite;}
     @keyframes lp{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(1.5)}}
     .clock{font-family:'Space Mono',monospace;font-size:.9rem;}
+    .topbar-link{color:rgba(255,255,255,.75);text-decoration:none;font-size:.75rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;transition:color .2s;}
+    .topbar-link:hover{color:#fff;}
 
     /* LAYOUT */
     .layout{display:grid;grid-template-columns:1fr 300px;gap:16px;padding:16px;max-width:1600px;margin:0 auto;}
@@ -318,6 +320,7 @@
 
 <div class="topbar">
   <h1>🛸 Mission Control</h1>
+  <a href="intake.html" class="topbar-link">Submit Idea</a>
   <div><span class="live-dot"></span><span class="clock" id="clk">--:--:--</span></div>
 </div>
 
