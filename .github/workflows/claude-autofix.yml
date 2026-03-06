@@ -37,17 +37,13 @@ jobs:
       - name: Collect changed files
         id: files
         run: |
-          # Get list of changed files and their contents
           CHANGED=$(git diff --name-only origin/${{ steps.pr.outputs.base_ref }}...HEAD -- . ':!package-lock.json' ':!*.lock')
-          echo "CHANGED<<FILES_EOF" >> "$GITHUB_OUTPUT"
-          echo "$CHANGED" >> "$GITHUB_OUTPUT"
-          echo "FILES_EOF" >> "$GITHUB_OUTPUT"
 
-          # Build a JSON payload with each file's content
           FILE_DATA="[]"
           for f in $CHANGED; do
             if [ -f "$f" ]; then
-              FILE_DATA=$(echo "$FILE_DATA" | jq --arg path "$f" --arg content "$(cat "$f")" '. + [{"path": $path, "content": $content}]')
+              FILE_DATA=$(jq --arg path "$f" --arg content "$(cat "$f")" \
+                '. + [{"path": $path, "content": $content}]' <<< "$FILE_DATA")
             fi
           done
           echo "$FILE_DATA" > /tmp/file_data.json
@@ -56,8 +52,8 @@ jobs:
         id: fix
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          COMMENT: ${{ github.event.comment.body }}
         run: |
-          COMMENT="${{ github.event.comment.body }}"
           FILE_DATA=$(cat /tmp/file_data.json)
           DIFF=$(git diff origin/${{ steps.pr.outputs.base_ref }}...HEAD -- . ':!package-lock.json' ':!*.lock' | head -c 30000)
 
@@ -74,85 +70,227 @@ jobs:
                 max_tokens: 8192,
                 messages: [{
                   role: "user",
-                  content: ("You are a code fixer for the Mission-Control repository.\n\nReviewer comment: " + $comment + "\n\nDiff for context:\n```\n" + $diff + "\n```\n\nHere are the current files that were changed:\n" + ($files | map("--- " + .path + " ---\n" + .content) | join("\n\n")) + "\n\nFix the issues mentioned in the review. Output your response as a JSON array of objects with \"path\" and \"content\" fields. Each object should contain the full corrected file content. Output ONLY valid JSON, no markdown fences, no explanation.\n\nIf no fixes are needed, output exactly: NO_FIX_NEEDED")
+                  content: ("You are a code fixer for the Mission-Control repository.\n\nReviewer comment: " + $comment + "\n\nDiff for context:\n```\n" + $diff + "\n```\n\nHere are the current files that were changed:\n" + ($files | map("--- " + .path + " ---\n" + .content) | join("\n\n")) + "\n\nFix the issues mentioned in the review.\n\nRules:\n- Only modify files that need fixing\n- You may only write to: root-level .js/.html/.css/.md files, js/**, hal_ops/**, scripts/**, src/**, docs/**\n- Never write to .github/, .env, Dockerfile, docker-compose, Makefile, or any config/deploy files\n\nOutput your response as a JSON array of objects with \"path\" and \"content\" fields. Each object should contain the full corrected file content. Output ONLY valid JSON, no markdown fences, no explanation.\n\nIf no fixes are needed, output exactly: NO_FIX_NEEDED")
                 }]
               }'
             )")
 
-          # Extract the text response
           TEXT=$(echo "$RESPONSE" | jq -r '.content[0].text // "ERROR"')
 
           if echo "$TEXT" | grep -q "NO_FIX_NEEDED"; then
             echo "no_fix=true" >> "$GITHUB_OUTPUT"
-          elif echo "$TEXT" | grep -q "ERROR"; then
-            echo "error=true" >> "$GITHUB_OUTPUT"
-            echo "error_msg=$TEXT" >> "$GITHUB_OUTPUT"
-          else
-            # Strip any markdown fences if Claude wrapped them anyway
-            CLEAN=$(echo "$TEXT" | sed '/^```/d')
-            echo "$CLEAN" > /tmp/fixes.json
-
-            # Validate it's JSON
-            if jq empty /tmp/fixes.json 2>/dev/null; then
-              echo "has_fixes=true" >> "$GITHUB_OUTPUT"
-            else
-              echo "error=true" >> "$GITHUB_OUTPUT"
-              echo "error_msg=Invalid JSON response" >> "$GITHUB_OUTPUT"
-            fi
+            exit 0
           fi
 
-      - name: Apply fixes and push
+          if [ "$TEXT" = "ERROR" ]; then
+            echo "error=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Strip markdown fences if Claude wrapped them
+          echo "$TEXT" | sed '/^```/d' > /tmp/fixes.json
+
+          if ! jq empty /tmp/fixes.json 2>/dev/null; then
+            echo "error=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # --- Validation gate ---
+
+          # Must be a JSON array with 1-10 entries
+          FILE_COUNT=$(jq 'length // 0' /tmp/fixes.json)
+          if [ "$FILE_COUNT" -eq 0 ] || [ "$FILE_COUNT" -gt 10 ]; then
+            echo "error=true" >> "$GITHUB_OUTPUT"
+            echo "error_detail=file_count" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Block traversal: no absolute paths, no ../
+          BAD_PATHS=$(jq -r '.[].path' /tmp/fixes.json | grep -cE '(^/|\.\./)' || true)
+          if [ "$BAD_PATHS" -gt 0 ]; then
+            echo "error=true" >> "$GITHUB_OUTPUT"
+            echo "error_detail=traversal" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Path allowlist — only these locations are writable
+          #   Root-level app files: *.js, *.mjs, *.html, *.css, *.md
+          #   Directories: js/, hal_ops/, scripts/, src/, docs/
+          # Everything else is blocked, especially .github/, dotfiles, and config
+          BLOCKED=$(jq -r '.[].path' /tmp/fixes.json | grep -cvE \
+            '^(\./(index\.html|app\.js|styles\.css|README\.md|CLAUDE\.md)|\./(js|hal_ops|scripts|src|docs)/)' || true)
+          if [ "$BLOCKED" -gt 0 ]; then
+            # Also try without ./ prefix since Claude may omit it
+            BLOCKED=$(jq -r '.[].path' /tmp/fixes.json | grep -cvE \
+              '^((index\.html|app\.js|styles\.css|README\.md|CLAUDE\.md)|(js|hal_ops|scripts|src|docs)/)' || true)
+          fi
+          if [ "$BLOCKED" -gt 0 ]; then
+            echo "error=true" >> "$GITHUB_OUTPUT"
+            echo "error_detail=blocked_path" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Total bytes cap: 200KB across all files
+          TOTAL_BYTES=$(jq '[.[].content | length] | add // 0' /tmp/fixes.json)
+          if [ "$TOTAL_BYTES" -gt 204800 ]; then
+            echo "error=true" >> "$GITHUB_OUTPUT"
+            echo "error_detail=size_limit" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "has_fixes=true" >> "$GITHUB_OUTPUT"
+
+      - name: Apply fixes to working tree
         if: steps.fix.outputs.has_fixes == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        id: apply
         run: |
-          # Write each fixed file
           COUNT=$(jq length /tmp/fixes.json)
           for i in $(seq 0 $(($COUNT - 1))); do
             FILE_PATH=$(jq -r ".[$i].path" /tmp/fixes.json)
+            mkdir -p "$(dirname "$FILE_PATH")"
             jq -r ".[$i].content" /tmp/fixes.json > "$FILE_PATH"
           done
 
-          # Check if there are actual changes
           if git diff --quiet && git diff --cached --quiet; then
-            curl -s -X POST \
-              -H "Authorization: token $GH_TOKEN" \
-              -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments" \
-              -d '{"body": "🔧 **Claude Autofix**\n\nNo changes needed — the code already looks correct."}'
+            echo "no_diff=true" >> "$GITHUB_OUTPUT"
           else
-            git config user.name "Claude Autofix"
-            git config user.email "claude-autofix@users.noreply.github.com"
-            git add -A
-            git diff --cached --stat
-            git commit -m "autofix: apply Claude-suggested changes"
-            git push origin ${{ steps.pr.outputs.head_ref }}
-
-            curl -s -X POST \
-              -H "Authorization: token $GH_TOKEN" \
-              -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments" \
-              -d '{"body": "🔧 **Claude Autofix**\n\nFixes applied and pushed. Please review the latest commit."}'
+            echo "has_diff=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: No fix needed
+      - name: Validate changes
+        if: steps.apply.outputs.has_diff == 'true'
+        id: validate
+        run: |
+          ERRORS=""
+
+          # HTML structure check
+          for f in $(git diff --name-only | grep '\.html$' || true); do
+            if [ -f "$f" ]; then
+              if ! grep -q '<html' "$f"; then
+                ERRORS="${ERRORS}${f}: missing <html> tag\n"
+              fi
+              if ! grep -q '</html>' "$f"; then
+                ERRORS="${ERRORS}${f}: missing </html> closing tag\n"
+              fi
+            fi
+          done
+
+          # JS syntax check
+          for f in $(git diff --name-only | grep -E '\.(js|mjs)$' || true); do
+            if [ -f "$f" ]; then
+              if ! node --check "$f" 2>/tmp/js_err; then
+                ERRORS="${ERRORS}${f}: $(cat /tmp/js_err)\n"
+              fi
+            fi
+          done
+
+          # CSS brace balance
+          for f in $(git diff --name-only | grep '\.css$' || true); do
+            if [ -f "$f" ]; then
+              OPEN=$(grep -o '{' "$f" | wc -l)
+              CLOSE=$(grep -o '}' "$f" | wc -l)
+              if [ "$OPEN" -ne "$CLOSE" ]; then
+                ERRORS="${ERRORS}${f}: mismatched braces (${OPEN} open, ${CLOSE} close)\n"
+              fi
+            fi
+          done
+
+          # Secret scan
+          for f in $(git diff --name-only); do
+            if [ -f "$f" ]; then
+              if grep -qEi '(api_key|secret|password|token)\s*[:=]\s*["\x27][A-Za-z0-9]' "$f"; then
+                ERRORS="${ERRORS}${f}: possible hardcoded secret detected\n"
+              fi
+            fi
+          done
+
+          if [ -n "$ERRORS" ]; then
+            echo "ERRORS<<ERRORS_EOF" >> "$GITHUB_OUTPUT"
+            printf "$ERRORS" >> "$GITHUB_OUTPUT"
+            echo "ERRORS_EOF" >> "$GITHUB_OUTPUT"
+            echo "failed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "passed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push fixes
+        if: steps.validate.outputs.passed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          HEAD_REF: ${{ steps.pr.outputs.head_ref }}
+        run: |
+          git config user.name "Claude Autofix"
+          git config user.email "claude-autofix@users.noreply.github.com"
+          git add -A
+          git commit -m "autofix: apply Claude-suggested changes"
+          git push origin "$HEAD_REF"
+
+          curl -s -X POST \
+            -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+            -d '{"body":"🔧 **Claude Autofix**\n\nFixes applied and pushed. Please review the latest commit."}'
+
+      - name: Comment on validation failure
+        if: steps.validate.outputs.failed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          ERRORS: ${{ steps.validate.outputs.ERRORS }}
+        run: |
+          curl -s -X POST \
+            -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+            -d "$(jq -n --arg errors "$ERRORS" \
+              '{body: ("🔧 **Claude Autofix**\n\nGenerated fixes but they failed validation. No changes were pushed.\n\n```\n" + $errors + "```")}')"
+
+      - name: Comment if no diff
+        if: steps.apply.outputs.no_diff == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          curl -s -X POST \
+            -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+            -d '{"body":"🔧 **Claude Autofix**\n\nNo changes needed — the code already looks correct."}'
+
+      - name: Comment if no fix needed
         if: steps.fix.outputs.no_fix == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.issue.number }}
         run: |
           curl -s -X POST \
             -H "Authorization: token $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments" \
-            -d '{"body": "🔧 **Claude Autofix**\n\nReviewed the code — no issues to fix. Changes look good."}'
+            "https://api.github.com/repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+            -d '{"body":"🔧 **Claude Autofix**\n\nReviewed the code — no issues to fix. Changes look good."}'
 
-      - name: Report error
+      - name: Comment on error
         if: steps.fix.outputs.error == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          ERROR_DETAIL: ${{ steps.fix.outputs.error_detail }}
         run: |
+          if [ "$ERROR_DETAIL" = "blocked_path" ]; then
+            MSG="Generated fixes targeted restricted paths (e.g. .github/, config files). No changes were applied."
+          elif [ "$ERROR_DETAIL" = "size_limit" ]; then
+            MSG="Generated fixes exceeded the 200KB size limit. No changes were applied."
+          elif [ "$ERROR_DETAIL" = "file_count" ]; then
+            MSG="Generated fixes had too many file changes (max 10). No changes were applied."
+          elif [ "$ERROR_DETAIL" = "traversal" ]; then
+            MSG="Generated fixes contained invalid file paths. No changes were applied."
+          else
+            MSG="Hit an issue generating fixes. Check the workflow logs for details."
+          fi
           curl -s -X POST \
             -H "Authorization: token $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments" \
-            -d '{"body": "🔧 **Claude Autofix**\n\nHit an issue generating fixes. Check the workflow logs for details."}'
+            "https://api.github.com/repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+            -d "$(jq -n --arg msg "$MSG" \
+              '{body: ("🔧 **Claude Autofix**\n\n" + $msg)}')"
