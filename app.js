@@ -4,6 +4,7 @@ const tasks = [];
 
 // Function to add a task
 function addTask(title, assignedTo) {
+    if (!title || !assignedTo) return;
     const task = { title, assignedTo, status: 'To Do' };
     tasks.push(task);
     updateBoard();
