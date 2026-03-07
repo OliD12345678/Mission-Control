@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mission Control — Submit an Idea</title>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --wood-dark: #7a5228;
+      --wood: #b8905a;
+      --wood-light: #e8d8c0;
+      --parchment: #faf6ee;
+      --card: rgba(255, 252, 246, 0.96);
+      --hal: #2d6fd4;
+      --hal-hover: #245bb0;
+      --text: #3a2e1e;
+      --text-muted: #8a7a66;
+      --shadow: 0 2px 12px rgba(90, 60, 20, 0.10);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Nunito', sans-serif;
+      background: var(--parchment);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    .topbar {
+      background: var(--wood-dark);
+      color: #fff;
+      padding: 14px 24px;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .topbar a {
+      color: rgba(255,255,255,0.7);
+      text-decoration: none;
+      font-size: 12px;
+      letter-spacing: 1px;
+      margin-left: auto;
+    }
+    .topbar a:hover { color: #fff; }
+
+    .container {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 32px 20px 60px;
+    }
+
+    h1 {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: var(--wood-dark);
+    }
+
+    .subtitle {
+      color: var(--text-muted);
+      font-size: 15px;
+      margin-bottom: 28px;
+      line-height: 1.5;
+    }
+
+    .panel {
+      background: var(--card);
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+      padding: 28px;
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      font-weight: 700;
+      font-size: 14px;
+      margin-bottom: 6px;
+      color: var(--wood-dark);
+    }
+
+    .helper {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+      line-height: 1.4;
+    }
+
+    input[type="text"],
+    textarea,
+    select {
+      width: 100%;
+      border: 2px solid var(--wood-light);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-family: 'Nunito', sans-serif;
+      font-size: 15px;
+      color: var(--text);
+      background: #fff;
+      transition: border-color 0.2s;
+      margin-bottom: 20px;
+    }
+
+    input[type="text"]:focus,
+    textarea:focus,
+    select:focus {
+      outline: none;
+      border-color: var(--hal);
+    }
+
+    textarea { resize: vertical; min-height: 100px; }
+
+    .btn {
+      display: inline-block;
+      padding: 12px 28px;
+      border: none;
+      border-radius: 8px;
+      font-family: 'Nunito', sans-serif;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+
+    .btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--hal), var(--hal-hover));
+      color: #fff;
+    }
+
+    .btn-secondary {
+      background: var(--wood-light);
+      color: var(--wood-dark);
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 4px;
+    }
+
+    .section-divider {
+      border: none;
+      border-top: 1px solid var(--wood-light);
+      margin: 24px 0;
+    }
+
+    .api-key-section {
+      background: rgba(45, 111, 212, 0.06);
+      border-radius: 10px;
+      padding: 18px;
+      margin-bottom: 20px;
+    }
+
+    .api-key-section label { color: var(--hal); }
+
+    .api-key-note {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: -12px;
+      margin-bottom: 16px;
+      line-height: 1.4;
+    }
+
+    .api-key-status {
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .api-key-status.saved { color: #2a8a4a; }
+    .api-key-status.none { color: var(--text-muted); }
+
+    #refined-output {
+      display: none;
+      margin-top: 20px;
+    }
+
+    #refined-output .panel {
+      border-left: 3px solid var(--hal);
+    }
+
+    #refined-output h3 {
+      font-size: 15px;
+      color: var(--hal);
+      margin-bottom: 12px;
+    }
+
+    #refined-text {
+      font-size: 14px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      color: var(--text);
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid var(--wood-light);
+      border-top-color: var(--hal);
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .error-msg {
+      color: #c0392b;
+      font-size: 13px;
+      margin-top: 8px;
+    }
+
+    footer {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 12px;
+      padding: 20px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="topbar">
+  Mission Control — Intake
+  <a href="index.html">Back to Board</a>
+</div>
+
+<div class="container">
+  <h1>Submit an Idea</h1>
+  <p class="subtitle">
+    Describe what you'd like built, fixed, or changed — in plain English.
+    This form creates a GitHub issue that our automation picks up and works on.
+  </p>
+
+  <div class="panel">
+    <label for="idea-title">What do you want?</label>
+    <p class="helper">A short title for your idea. Example: "Add a dark mode toggle"</p>
+    <input type="text" id="idea-title" placeholder="e.g. Add a search bar to the task board">
+
+    <label for="idea-detail">Tell us more</label>
+    <p class="helper">Describe what it should do, why it matters, or what problem it solves. No technical language needed.</p>
+    <textarea id="idea-detail" rows="5" placeholder="e.g. I want to quickly find tasks by name instead of scrolling through the whole board. It should filter as I type."></textarea>
+
+    <label for="idea-type">What kind of change is this?</label>
+    <p class="helper">Pick the closest match — don't worry about getting it perfect.</p>
+    <select id="idea-type">
+      <option value="feature">New feature</option>
+      <option value="bug">Bug fix</option>
+      <option value="improvement">Improvement to something existing</option>
+      <option value="other">Something else</option>
+    </select>
+
+    <hr class="section-divider">
+
+    <div class="api-key-section">
+      <label for="api-key-input">Optional: Claude refinement</label>
+      <p class="helper">
+        If you paste an Anthropic API key, Claude will polish your idea into a clearer issue before you submit.
+        Without a key, you'll get a structured template instead. Both work fine.
+      </p>
+      <p class="api-key-note">
+        Your key is stored only in this browser tab's session. It is never sent anywhere except directly to the Anthropic API.
+        It disappears when you close the tab.
+      </p>
+      <input type="text" id="api-key-input" placeholder="sk-ant-... (optional)">
+      <p id="api-key-status" class="api-key-status none">No API key saved</p>
+      <button class="btn btn-secondary" id="save-key-btn" type="button">Save Key for This Session</button>
+    </div>
+
+    <hr class="section-divider">
+
+    <div class="btn-row">
+      <button class="btn btn-primary" id="refine-btn" type="button">Refine with Claude</button>
+      <button class="btn btn-secondary" id="skip-btn" type="button">Skip — Use Template</button>
+    </div>
+
+    <p id="form-error" class="error-msg" style="display:none"></p>
+  </div>
+
+  <div id="refined-output">
+    <div class="panel">
+      <h3 id="output-heading">Refined by Claude</h3>
+      <pre id="refined-text"></pre>
+    </div>
+    <div class="btn-row">
+      <a id="github-link" class="btn btn-primary" target="_blank" rel="noopener">Open as GitHub Issue</a>
+      <button class="btn btn-secondary" id="edit-btn" type="button">Go Back and Edit</button>
+    </div>
+  </div>
+</div>
+
+<footer>
+  Mission Control — ideas go in, working code comes out.
+</footer>
+
+<script>
+(function () {
+  var REPO = 'OliD12345678/Mission-Control';
+  var titleEl = document.getElementById('idea-title');
+  var detailEl = document.getElementById('idea-detail');
+  var typeEl = document.getElementById('idea-type');
+  var apiKeyInput = document.getElementById('api-key-input');
+  var saveKeyBtn = document.getElementById('save-key-btn');
+  var apiKeyStatus = document.getElementById('api-key-status');
+  var refineBtn = document.getElementById('refine-btn');
+  var skipBtn = document.getElementById('skip-btn');
+  var formError = document.getElementById('form-error');
+  var outputDiv = document.getElementById('refined-output');
+  var outputHeading = document.getElementById('output-heading');
+  var refinedText = document.getElementById('refined-text');
+  var githubLink = document.getElementById('github-link');
+  var editBtn = document.getElementById('edit-btn');
+
+  function updateKeyStatus() {
+    var key = sessionStorage.getItem('anthropic_key');
+    if (key) {
+      apiKeyStatus.textContent = 'Key saved for this session';
+      apiKeyStatus.className = 'api-key-status saved';
+      refineBtn.textContent = 'Refine with Claude';
+      refineBtn.disabled = false;
+    } else {
+      apiKeyStatus.textContent = 'No API key saved';
+      apiKeyStatus.className = 'api-key-status none';
+    }
+  }
+
+  saveKeyBtn.addEventListener('click', function () {
+    var key = apiKeyInput.value.trim();
+    if (key) {
+      sessionStorage.setItem('anthropic_key', key);
+      apiKeyInput.value = '';
+    } else {
+      sessionStorage.removeItem('anthropic_key');
+    }
+    updateKeyStatus();
+  });
+
+  function showError(msg) {
+    formError.textContent = msg;
+    formError.style.display = 'block';
+  }
+
+  function hideError() {
+    formError.style.display = 'none';
+  }
+
+  function getFormData() {
+    var title = titleEl.value.trim();
+    var detail = detailEl.value.trim();
+    var type = typeEl.value;
+    if (!title) {
+      showError('Please enter a title for your idea.');
+      return null;
+    }
+    hideError();
+    return { title: title, detail: detail, type: type };
+  }
+
+  var typeLabels = {
+    feature: 'New feature',
+    bug: 'Bug fix',
+    improvement: 'Improvement',
+    other: 'Other'
+  };
+
+  function buildTemplate(data) {
+    var lines = [];
+    lines.push('## What');
+    lines.push(data.title);
+    lines.push('');
+    lines.push('## Type');
+    lines.push(typeLabels[data.type] || data.type);
+    lines.push('');
+    lines.push('## Details');
+    lines.push(data.detail || '_No additional details provided._');
+    lines.push('');
+    lines.push('---');
+    lines.push('_Submitted via Mission Control intake form_');
+    return lines.join('\n');
+  }
+
+  function buildGitHubUrl(title, body) {
+    var params = new URLSearchParams();
+    params.set('title', title);
+    params.set('body', body);
+    params.set('labels', 'intake');
+    return 'https://github.com/' + REPO + '/issues/new?' + params.toString();
+  }
+
+  function showOutput(title, body, heading) {
+    outputHeading.textContent = heading;
+    refinedText.textContent = body;
+    githubLink.href = buildGitHubUrl(title, body);
+    outputDiv.style.display = 'block';
+    outputDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  skipBtn.addEventListener('click', function () {
+    var data = getFormData();
+    if (!data) return;
+    var body = buildTemplate(data);
+    showOutput(data.title, body, 'Structured Template');
+  });
+
+  refineBtn.addEventListener('click', function () {
+    var data = getFormData();
+    if (!data) return;
+
+    var apiKey = sessionStorage.getItem('anthropic_key');
+    if (!apiKey) {
+      showError('Save an API key first, or use "Skip — Use Template" instead.');
+      return;
+    }
+
+    refineBtn.disabled = true;
+    refineBtn.innerHTML = '<span class="spinner"></span>Thinking...';
+    hideError();
+
+    var prompt = 'You are a helpful assistant that turns informal feature requests into clear GitHub issues.\n\n'
+      + 'The user submitted this idea:\n'
+      + 'Title: ' + data.title + '\n'
+      + 'Type: ' + (typeLabels[data.type] || data.type) + '\n'
+      + 'Details: ' + (data.detail || '(none)') + '\n\n'
+      + 'Rewrite this as a well-structured GitHub issue body. Use these sections:\n'
+      + '## What\nOne clear sentence describing the change.\n\n'
+      + '## Why\nWhy this matters or what problem it solves.\n\n'
+      + '## Acceptance criteria\nA short bullet list of what "done" looks like.\n\n'
+      + 'Keep it concise and friendly. Do not add implementation details or technical specs — the developer will figure those out.\n'
+      + 'Output ONLY the issue body (markdown). No preamble.';
+
+    fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1024,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    })
+    .then(function (res) { return res.json(); })
+    .then(function (json) {
+      refineBtn.disabled = false;
+      refineBtn.textContent = 'Refine with Claude';
+
+      if (json.error) {
+        showError('Claude error: ' + (json.error.message || 'Unknown error'));
+        return;
+      }
+
+      var text = json.content && json.content[0] && json.content[0].text;
+      if (!text) {
+        showError('Unexpected response from Claude. Try again or use the template.');
+        return;
+      }
+
+      var body = text + '\n\n---\n_Refined by Claude via Mission Control intake form_';
+      showOutput(data.title, body, 'Refined by Claude');
+    })
+    .catch(function (err) {
+      refineBtn.disabled = false;
+      refineBtn.textContent = 'Refine with Claude';
+      showError('Network error: ' + err.message);
+    });
+  });
+
+  editBtn.addEventListener('click', function () {
+    outputDiv.style.display = 'none';
+    titleEl.focus();
+  });
+
+  updateKeyStatus();
+})();
+</script>
+
+</body>
+</html>
