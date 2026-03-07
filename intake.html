@@ -4,306 +4,607 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mission Control — Submit an Idea</title>
-  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --wood-dark: #7a5228;
-      --wood: #b8905a;
-      --wood-light: #e8d8c0;
-      --parchment: #faf6ee;
-      --card: rgba(255, 252, 246, 0.96);
-      --hal: #2d6fd4;
-      --hal-hover: #245bb0;
-      --text: #3a2e1e;
-      --text-muted: #8a7a66;
-      --shadow: 0 2px 12px rgba(90, 60, 20, 0.10);
+      --accent: #7c5cfc;
+      --accent-hover: #6a48e6;
+      --accent-light: rgba(124, 92, 252, 0.08);
+      --accent-glow: rgba(124, 92, 252, 0.18);
+      --bg: #f4f2f7;
+      --surface: #ffffff;
+      --surface-alt: #faf9fc;
+      --border: #e8e5f0;
+      --border-focus: #7c5cfc;
+      --text: #1a1625;
+      --text-secondary: #6e6a78;
+      --text-tertiary: #9d99a8;
+      --success: #22c55e;
+      --error: #ef4444;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+      --shadow-md: 0 4px 16px rgba(0,0,0,0.06);
+      --shadow-lg: 0 8px 32px rgba(0,0,0,0.08);
+      --radius: 16px;
+      --radius-sm: 10px;
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
-      font-family: 'Nunito', sans-serif;
-      background: var(--parchment);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
       color: var(--text);
       min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
     }
 
-    .topbar {
-      background: var(--wood-dark);
-      color: #fff;
-      padding: 14px 24px;
-      font-size: 14px;
-      font-weight: 700;
-      letter-spacing: 3px;
-      text-transform: uppercase;
+    /* ── Nav ── */
+    .nav {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 32px;
+      height: 56px;
+      display: flex;
+      align-items: center;
       position: sticky;
       top: 0;
       z-index: 100;
+      backdrop-filter: blur(12px);
+      background: rgba(255,255,255,0.85);
+    }
+    .nav-brand {
+      font-weight: 700;
+      font-size: 15px;
+      color: var(--text);
+      letter-spacing: -0.3px;
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
     }
-
-    .topbar a {
-      color: rgba(255,255,255,0.7);
-      text-decoration: none;
-      font-size: 12px;
-      letter-spacing: 1px;
-      margin-left: auto;
-    }
-    .topbar a:hover { color: #fff; }
-
-    .container {
-      max-width: 640px;
-      margin: 0 auto;
-      padding: 32px 20px 60px;
-    }
-
-    h1 {
-      font-size: 24px;
-      font-weight: 700;
-      margin-bottom: 8px;
-      color: var(--wood-dark);
-    }
-
-    .subtitle {
-      color: var(--text-muted);
-      font-size: 15px;
-      margin-bottom: 28px;
-      line-height: 1.5;
-    }
-
-    .panel {
-      background: var(--card);
-      border-radius: 14px;
-      box-shadow: var(--shadow);
-      padding: 28px;
-      margin-bottom: 20px;
-    }
-
-    label {
-      display: block;
-      font-weight: 700;
+    .nav-brand .logo {
+      width: 28px;
+      height: 28px;
+      background: linear-gradient(135deg, var(--accent), #a78bfa);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       font-size: 14px;
-      margin-bottom: 6px;
-      color: var(--wood-dark);
+      color: #fff;
+      font-weight: 700;
+    }
+    .nav-links {
+      margin-left: auto;
+      display: flex;
+      gap: 24px;
+      align-items: center;
+    }
+    .nav-links a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 500;
+      transition: color 0.15s;
+    }
+    .nav-links a:hover { color: var(--accent); }
+    .nav-badge {
+      background: var(--accent-light);
+      color: var(--accent);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 99px;
     }
 
-    .helper {
+    /* ── Hero ── */
+    .hero {
+      text-align: center;
+      padding: 56px 24px 40px;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--accent-light);
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 6px 14px;
+      border-radius: 99px;
+      margin-bottom: 20px;
+      letter-spacing: 0.2px;
+    }
+    .hero h1 {
+      font-size: 32px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      line-height: 1.2;
+      margin-bottom: 12px;
+    }
+    .hero p {
+      color: var(--text-secondary);
+      font-size: 16px;
+      line-height: 1.6;
+      max-width: 480px;
+      margin: 0 auto;
+    }
+
+    /* ── Main layout ── */
+    .main {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 0 24px 80px;
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      gap: 28px;
+      align-items: start;
+    }
+
+    /* ── Card ── */
+    .card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-sm);
+    }
+    .card-body { padding: 32px; }
+    .card-header {
+      padding: 20px 32px;
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+      font-size: 15px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--text);
+    }
+    .card-header .icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      flex-shrink: 0;
+    }
+    .icon-purple { background: var(--accent-light); }
+    .icon-green { background: rgba(34,197,94,0.1); }
+    .icon-blue { background: rgba(59,130,246,0.1); }
+
+    /* ── Form elements ── */
+    .field { margin-bottom: 24px; }
+    .field:last-child { margin-bottom: 0; }
+    .field label {
+      display: block;
+      font-weight: 600;
       font-size: 13px;
-      color: var(--text-muted);
+      margin-bottom: 4px;
+      color: var(--text);
+      letter-spacing: 0.1px;
+    }
+    .field .hint {
+      font-size: 13px;
+      color: var(--text-tertiary);
       margin-bottom: 8px;
       line-height: 1.4;
     }
-
     input[type="text"],
     textarea,
     select {
       width: 100%;
-      border: 2px solid var(--wood-light);
-      border-radius: 8px;
-      padding: 10px 12px;
-      font-family: 'Nunito', sans-serif;
-      font-size: 15px;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 11px 14px;
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
       color: var(--text);
-      background: #fff;
-      transition: border-color 0.2s;
-      margin-bottom: 20px;
+      background: var(--surface);
+      transition: border-color 0.15s, box-shadow 0.15s;
+      appearance: none;
     }
-
     input[type="text"]:focus,
     textarea:focus,
     select:focus {
       outline: none;
-      border-color: var(--hal);
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 3px var(--accent-glow);
     }
-
-    textarea { resize: vertical; min-height: 100px; }
-
-    .btn {
-      display: inline-block;
-      padding: 12px 28px;
-      border: none;
-      border-radius: 8px;
-      font-family: 'Nunito', sans-serif;
-      font-size: 15px;
-      font-weight: 700;
+    input::placeholder,
+    textarea::placeholder {
+      color: var(--text-tertiary);
+    }
+    textarea { resize: vertical; min-height: 110px; line-height: 1.5; }
+    select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%239d99a8' viewBox='0 0 16 16'%3E%3Cpath d='M8 11.4L2.6 6h10.8z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 14px center;
+      padding-right: 36px;
       cursor: pointer;
-      transition: transform 0.15s, box-shadow 0.15s;
     }
 
-    .btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
-
-    .btn-primary {
-      background: linear-gradient(135deg, var(--hal), var(--hal-hover));
-      color: #fff;
-    }
-
-    .btn-secondary {
-      background: var(--wood-light);
-      color: var(--wood-dark);
-    }
-
-    .btn-row {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      margin-top: 4px;
-    }
-
-    .section-divider {
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 11px 24px;
       border: none;
-      border-top: 1px solid var(--wood-light);
-      margin: 24px 0;
-    }
-
-    .api-key-section {
-      background: rgba(45, 111, 212, 0.06);
-      border-radius: 10px;
-      padding: 18px;
-      margin-bottom: 20px;
-    }
-
-    .api-key-section label { color: var(--hal); }
-
-    .api-key-note {
-      font-size: 12px;
-      color: var(--text-muted);
-      margin-top: -12px;
-      margin-bottom: 16px;
-      line-height: 1.4;
-    }
-
-    .api-key-status {
-      font-size: 13px;
-      font-weight: 600;
-      margin-bottom: 8px;
-    }
-    .api-key-status.saved { color: #2a8a4a; }
-    .api-key-status.none { color: var(--text-muted); }
-
-    #refined-output {
-      display: none;
-      margin-top: 20px;
-    }
-
-    #refined-output .panel {
-      border-left: 3px solid var(--hal);
-    }
-
-    #refined-output h3 {
-      font-size: 15px;
-      color: var(--hal);
-      margin-bottom: 12px;
-    }
-
-    #refined-text {
+      border-radius: var(--radius-sm);
+      font-family: 'Inter', sans-serif;
       font-size: 14px;
-      line-height: 1.6;
-      white-space: pre-wrap;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+      text-decoration: none;
+      line-height: 1;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      box-shadow: 0 2px 8px rgba(124,92,252,0.3);
+    }
+    .btn-primary:hover {
+      background: var(--accent-hover);
+      box-shadow: 0 4px 16px rgba(124,92,252,0.35);
+      transform: translateY(-1px);
+    }
+    .btn-primary:active { transform: translateY(0); }
+    .btn-secondary {
+      background: var(--surface-alt);
+      color: var(--text-secondary);
+      border: 1.5px solid var(--border);
+    }
+    .btn-secondary:hover {
+      border-color: #ccc;
       color: var(--text);
     }
+    .btn-row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      padding-top: 4px;
+    }
 
+    /* ── Divider ── */
+    .divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 28px 0;
+    }
+
+    /* ── API key section ── */
+    .api-section {
+      background: var(--surface-alt);
+      border-radius: var(--radius-sm);
+      padding: 20px;
+      border: 1px solid var(--border);
+    }
+    .api-section label {
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .api-section .hint {
+      font-size: 12px;
+      color: var(--text-tertiary);
+      margin-bottom: 10px;
+      line-height: 1.45;
+    }
+    .api-section input[type="text"] {
+      font-size: 13px;
+      padding: 9px 12px;
+      margin-bottom: 10px;
+    }
+    .key-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .key-status {
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .key-status.saved { color: var(--success); }
+    .key-status.none { color: var(--text-tertiary); }
+    .btn-sm {
+      padding: 7px 16px;
+      font-size: 12px;
+      border-radius: 8px;
+    }
+
+    /* ── Output / preview ── */
+    #refined-output { display: none; }
+    .preview-panel {
+      background: var(--surface);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-md);
+      overflow: hidden;
+    }
+    .preview-header {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+      font-size: 14px;
+    }
+    .preview-header .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+    .preview-body {
+      padding: 24px;
+    }
+    #refined-text {
+      font-size: 13px;
+      line-height: 1.7;
+      white-space: pre-wrap;
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+    }
+    .preview-actions {
+      padding: 16px 24px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 12px;
+      background: var(--surface-alt);
+    }
+
+    /* ── Sidebar cards ── */
+    .sidebar { display: flex; flex-direction: column; gap: 20px; }
+    .info-card .card-body { padding: 24px; }
+    .info-title {
+      font-weight: 600;
+      font-size: 14px;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .step-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .step-list li {
+      display: flex;
+      gap: 12px;
+      font-size: 13px;
+      line-height: 1.5;
+      color: var(--text-secondary);
+    }
+    .step-num {
+      width: 24px;
+      height: 24px;
+      border-radius: 8px;
+      background: var(--accent-light);
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .privacy-item {
+      display: flex;
+      gap: 10px;
+      font-size: 13px;
+      line-height: 1.5;
+      color: var(--text-secondary);
+    }
+    .privacy-item + .privacy-item { margin-top: 12px; }
+    .privacy-icon {
+      flex-shrink: 0;
+      width: 20px;
+      text-align: center;
+      color: var(--text-tertiary);
+      font-size: 14px;
+      margin-top: 1px;
+    }
+
+    /* ── Spinner ── */
     .spinner {
       display: inline-block;
-      width: 16px;
-      height: 16px;
-      border: 2px solid var(--wood-light);
-      border-top-color: var(--hal);
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
       border-radius: 50%;
       animation: spin 0.6s linear infinite;
-      vertical-align: middle;
-      margin-right: 6px;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
+    /* ── Error ── */
     .error-msg {
-      color: #c0392b;
+      color: var(--error);
       font-size: 13px;
-      margin-top: 8px;
+      margin-top: 10px;
+      font-weight: 500;
+      display: none;
     }
 
-    footer {
+    /* ── Footer ── */
+    .footer {
       text-align: center;
-      color: var(--text-muted);
+      color: var(--text-tertiary);
       font-size: 12px;
-      padding: 20px;
+      padding: 24px;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      .main {
+        grid-template-columns: 1fr;
+      }
+      .hero { padding: 40px 20px 28px; }
+      .hero h1 { font-size: 26px; }
+      .card-body { padding: 24px; }
+      .card-header { padding: 16px 24px; }
+      .nav { padding: 0 16px; }
+      .sidebar { order: 2; }
     }
   </style>
 </head>
 <body>
 
-<div class="topbar">
-  Mission Control — Intake
-  <a href="index.html">Back to Board</a>
-</div>
+<!-- Nav -->
+<nav class="nav">
+  <div class="nav-brand">
+    <div class="logo">M</div>
+    Mission Control
+  </div>
+  <div class="nav-links">
+    <span class="nav-badge">Intake</span>
+    <a href="index.html">Back to Board</a>
+  </div>
+</nav>
 
-<div class="container">
-  <h1>Submit an Idea</h1>
-  <p class="subtitle">
-    Describe what you'd like built, fixed, or changed — in plain English.
-    This form creates a GitHub issue that our automation picks up and works on.
-  </p>
+<!-- Hero -->
+<section class="hero">
+  <div class="hero-badge">New Idea</div>
+  <h1>Submit an idea</h1>
+  <p>Describe what you'd like built, fixed, or improved &mdash; in plain English. We'll turn it into a trackable task.</p>
+</section>
 
-  <div class="panel">
-    <label for="idea-title">What do you want?</label>
-    <p class="helper">A short title for your idea. Example: "Add a dark mode toggle"</p>
-    <input type="text" id="idea-title" placeholder="e.g. Add a search bar to the task board">
+<!-- Main layout -->
+<div class="main">
+  <!-- Left column: form -->
+  <div class="form-col">
+    <div class="card" id="form-card">
+      <div class="card-header">
+        <div class="icon icon-purple">&#9998;</div>
+        Describe your idea
+      </div>
+      <div class="card-body">
+        <div class="field">
+          <label for="idea-title">Title</label>
+          <p class="hint">A short name for your idea</p>
+          <input type="text" id="idea-title" placeholder="e.g. Add a search bar to the task board">
+        </div>
 
-    <label for="idea-detail">Tell us more</label>
-    <p class="helper">Describe what it should do, why it matters, or what problem it solves. No technical language needed.</p>
-    <textarea id="idea-detail" rows="5" placeholder="e.g. I want to quickly find tasks by name instead of scrolling through the whole board. It should filter as I type."></textarea>
+        <div class="field">
+          <label for="idea-detail">Details</label>
+          <p class="hint">What should it do? Why does it matter? No technical language needed.</p>
+          <textarea id="idea-detail" rows="5" placeholder="e.g. I want to quickly find tasks by name instead of scrolling through the whole board. It should filter as I type."></textarea>
+        </div>
 
-    <label for="idea-type">What kind of change is this?</label>
-    <p class="helper">Pick the closest match — don't worry about getting it perfect.</p>
-    <select id="idea-type">
-      <option value="feature">New feature</option>
-      <option value="bug">Bug fix</option>
-      <option value="improvement">Improvement to something existing</option>
-      <option value="other">Something else</option>
-    </select>
+        <div class="field">
+          <label for="idea-type">Type</label>
+          <p class="hint">Pick the closest match</p>
+          <select id="idea-type">
+            <option value="feature">New feature</option>
+            <option value="bug">Bug fix</option>
+            <option value="improvement">Improvement to something existing</option>
+            <option value="other">Something else</option>
+          </select>
+        </div>
 
-    <hr class="section-divider">
+        <hr class="divider">
 
-    <div class="api-key-section">
-      <label for="api-key-input">Optional: Claude refinement</label>
-      <p class="helper">
-        If you paste an Anthropic API key, Claude will polish your idea into a clearer issue before you submit.
-        Without a key, you'll get a structured template instead. Both work fine.
-      </p>
-      <p class="api-key-note">
-        Your key is stored only in this browser tab's session. It is never sent anywhere except directly to the Anthropic API.
-        It disappears when you close the tab.
-      </p>
-      <input type="text" id="api-key-input" placeholder="sk-ant-... (optional)">
-      <p id="api-key-status" class="api-key-status none">No API key saved</p>
-      <button class="btn btn-secondary" id="save-key-btn" type="button">Save Key for This Session</button>
+        <div class="api-section">
+          <label for="api-key-input">Claude refinement (optional)</label>
+          <p class="hint">
+            Paste an Anthropic API key to let Claude polish your idea before submitting.
+            Without a key, you'll get a clean template instead. Both work great.
+          </p>
+          <input type="text" id="api-key-input" placeholder="sk-ant-... (optional)">
+          <div class="key-row">
+            <button class="btn btn-secondary btn-sm" id="save-key-btn" type="button">Save Key</button>
+            <span id="api-key-status" class="key-status none">No key saved</span>
+          </div>
+        </div>
+
+        <hr class="divider">
+
+        <div class="btn-row">
+          <button class="btn btn-primary" id="refine-btn" type="button">Refine with Claude</button>
+          <button class="btn btn-secondary" id="skip-btn" type="button">Skip &mdash; Use Template</button>
+        </div>
+        <p id="form-error" class="error-msg"></p>
+      </div>
     </div>
 
-    <hr class="section-divider">
-
-    <div class="btn-row">
-      <button class="btn btn-primary" id="refine-btn" type="button">Refine with Claude</button>
-      <button class="btn btn-secondary" id="skip-btn" type="button">Skip — Use Template</button>
+    <!-- Output panel (shown after refine / skip) -->
+    <div id="refined-output" style="margin-top: 24px;">
+      <div class="preview-panel">
+        <div class="preview-header">
+          <span class="dot"></span>
+          <span id="output-heading">Refined by Claude</span>
+        </div>
+        <div class="preview-body">
+          <pre id="refined-text"></pre>
+        </div>
+        <div class="preview-actions">
+          <a id="github-link" class="btn btn-primary" target="_blank" rel="noopener">Create GitHub Issue</a>
+          <button class="btn btn-secondary" id="edit-btn" type="button">Edit</button>
+        </div>
+      </div>
     </div>
-
-    <p id="form-error" class="error-msg" style="display:none"></p>
   </div>
 
-  <div id="refined-output">
-    <div class="panel">
-      <h3 id="output-heading">Refined by Claude</h3>
-      <pre id="refined-text"></pre>
+  <!-- Right column: sidebar -->
+  <div class="sidebar">
+    <!-- How it works -->
+    <div class="card info-card">
+      <div class="card-body">
+        <div class="info-title">
+          <div class="icon icon-blue" style="width:28px;height:28px;border-radius:8px;font-size:13px;">&#9889;</div>
+          How it works
+        </div>
+        <ol class="step-list">
+          <li>
+            <span class="step-num">1</span>
+            <span>Describe your idea in plain English using the form.</span>
+          </li>
+          <li>
+            <span class="step-num">2</span>
+            <span>Optionally let Claude refine it into a clear, structured issue.</span>
+          </li>
+          <li>
+            <span class="step-num">3</span>
+            <span>Click <strong>Create GitHub Issue</strong> to submit. Our agents pick it up from there.</span>
+          </li>
+        </ol>
+      </div>
     </div>
-    <div class="btn-row">
-      <a id="github-link" class="btn btn-primary" target="_blank" rel="noopener">Open as GitHub Issue</a>
-      <button class="btn btn-secondary" id="edit-btn" type="button">Go Back and Edit</button>
+
+    <!-- Privacy card -->
+    <div class="card info-card">
+      <div class="card-body">
+        <div class="info-title">
+          <div class="icon icon-green" style="width:28px;height:28px;border-radius:8px;font-size:13px;">&#128274;</div>
+          Privacy &amp; safety
+        </div>
+        <div class="privacy-item">
+          <span class="privacy-icon">&#10003;</span>
+          <span>Your API key is stored only in this browser tab's session and is never saved to any server.</span>
+        </div>
+        <div class="privacy-item">
+          <span class="privacy-icon">&#10003;</span>
+          <span>The key is sent only to the Anthropic API &mdash; nowhere else.</span>
+        </div>
+        <div class="privacy-item">
+          <span class="privacy-icon">&#10003;</span>
+          <span>Closing the tab erases the key completely.</span>
+        </div>
+      </div>
     </div>
   </div>
 </div>
 
-<footer>
-  Mission Control — ideas go in, working code comes out.
+<footer class="footer">
+  Mission Control &mdash; ideas go in, working code comes out.
 </footer>
 
 <script>
@@ -328,12 +629,12 @@
     var key = sessionStorage.getItem('anthropic_key');
     if (key) {
       apiKeyStatus.textContent = 'Key saved for this session';
-      apiKeyStatus.className = 'api-key-status saved';
+      apiKeyStatus.className = 'key-status saved';
       refineBtn.textContent = 'Refine with Claude';
       refineBtn.disabled = false;
     } else {
-      apiKeyStatus.textContent = 'No API key saved';
-      apiKeyStatus.className = 'api-key-status none';
+      apiKeyStatus.textContent = 'No key saved';
+      apiKeyStatus.className = 'key-status none';
     }
   }
 
@@ -421,12 +722,12 @@
 
     var apiKey = sessionStorage.getItem('anthropic_key');
     if (!apiKey) {
-      showError('Save an API key first, or use "Skip — Use Template" instead.');
+      showError('Save an API key first, or use "Skip \u2014 Use Template" instead.');
       return;
     }
 
     refineBtn.disabled = true;
-    refineBtn.innerHTML = '<span class="spinner"></span>Thinking...';
+    refineBtn.innerHTML = '<span class="spinner"></span>Thinking\u2026';
     hideError();
 
     var prompt = 'You are a helpful assistant that turns informal feature requests into clear GitHub issues.\n\n'
@@ -438,7 +739,7 @@
       + '## What\nOne clear sentence describing the change.\n\n'
       + '## Why\nWhy this matters or what problem it solves.\n\n'
       + '## Acceptance criteria\nA short bullet list of what "done" looks like.\n\n'
-      + 'Keep it concise and friendly. Do not add implementation details or technical specs — the developer will figure those out.\n'
+      + 'Keep it concise and friendly. Do not add implementation details or technical specs \u2014 the developer will figure those out.\n'
       + 'Output ONLY the issue body (markdown). No preamble.';
 
     fetch('https://api.anthropic.com/v1/messages', {
