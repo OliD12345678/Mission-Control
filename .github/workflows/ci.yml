@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get changed files
+        id: changed
+        run: |
+          FILES=$(git diff --name-only origin/${{ github.event.pull_request.base.ref }}...origin/${{ github.event.pull_request.head.ref }})
+          echo "FILES<<FILES_EOF" >> "$GITHUB_OUTPUT"
+          echo "$FILES" >> "$GITHUB_OUTPUT"
+          echo "FILES_EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Validate HTML
+        run: |
+          EXIT=0
+          for f in $(echo "$FILES" | grep '\.html$' || true); do
+            if [ -f "$f" ]; then
+              if ! grep -q '<html' "$f"; then
+                echo "::error file=$f::missing <html> tag"
+                EXIT=1
+              fi
+              if ! grep -q '</html>' "$f"; then
+                echo "::error file=$f::missing </html> closing tag"
+                EXIT=1
+              fi
+            fi
+          done
+          exit $EXIT
+        env:
+          FILES: ${{ steps.changed.outputs.FILES }}
+
+      - name: Validate JavaScript
+        run: |
+          EXIT=0
+          for f in $(echo "$FILES" | grep -E '\.(js|mjs)$' || true); do
+            if [ -f "$f" ]; then
+              if ! node --check "$f" 2>/tmp/js_err; then
+                echo "::error file=$f::$(cat /tmp/js_err)"
+                EXIT=1
+              fi
+            fi
+          done
+          exit $EXIT
+        env:
+          FILES: ${{ steps.changed.outputs.FILES }}
+
+      - name: Validate CSS
+        run: |
+          EXIT=0
+          for f in $(echo "$FILES" | grep '\.css$' || true); do
+            if [ -f "$f" ]; then
+              OPEN=$(grep -o '{' "$f" | wc -l)
+              CLOSE=$(grep -o '}' "$f" | wc -l)
+              if [ "$OPEN" -ne "$CLOSE" ]; then
+                echo "::error file=$f::mismatched braces ($OPEN open, $CLOSE close)"
+                EXIT=1
+              fi
+            fi
+          done
+          exit $EXIT
+        env:
+          FILES: ${{ steps.changed.outputs.FILES }}
+
+      - name: Scan for secrets
+        run: |
+          EXIT=0
+          for f in $(echo "$FILES"); do
+            if [ -f "$f" ]; then
+              if grep -qEi '(api_key|secret|password|token)\s*[:=]\s*["\x27][A-Za-z0-9]' "$f"; then
+                echo "::error file=$f::possible hardcoded secret detected"
+                EXIT=1
+              fi
+            fi
+          done
+          exit $EXIT
+        env:
+          FILES: ${{ steps.changed.outputs.FILES }}
+
+      - name: Check for restricted paths
+        run: |
+          EXIT=0
+          for f in $(echo "$FILES"); do
+            case "$f" in
+              .github/workflows/*|.env*|Dockerfile*|docker-compose*|Makefile|*.secret*|*.pem|*.key)
+                echo "::warning file=$f::restricted path modified — requires manual review"
+                ;;
+            esac
+          done
+          exit $EXIT
+        env:
+          FILES: ${{ steps.changed.outputs.FILES }}

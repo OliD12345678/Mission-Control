@@ -1,0 +1,295 @@
+name: Claude Issue Worker
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  implement:
+    if: github.event.label.name == 'ready-for-claude'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Collect codebase context
+        id: context
+        run: |
+          FILE_DATA="[]"
+          for f in $(find . -maxdepth 2 -type f \( -name '*.js' -o -name '*.mjs' -o -name '*.html' -o -name '*.css' -o -name '*.md' \) \
+                     ! -path './.git/*' ! -path './node_modules/*' | sort | head -20); do
+            FILE_DATA=$(jq --arg path "$f" --arg content "$(head -500 "$f")" \
+              '. + [{"path": $path, "content": $content}]' <<< "$FILE_DATA")
+          done
+          echo "$FILE_DATA" > /tmp/codebase.json
+
+      - name: Generate changes with Claude
+        id: changes
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          CODEBASE=$(cat /tmp/codebase.json)
+
+          RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -H "content-type: application/json" \
+            -d "$(jq -n \
+              --arg title "$ISSUE_TITLE" \
+              --arg body "$ISSUE_BODY" \
+              --argjson files "$CODEBASE" \
+              '{
+                model: "claude-sonnet-4-6",
+                max_tokens: 8192,
+                messages: [{
+                  role: "user",
+                  content: ("You are a developer for the Mission-Control repo (vanilla HTML/CSS/JS task board with agent ops tooling).\n\nImplement this GitHub issue.\n\nTitle: " + $title + "\nBody:\n" + $body + "\n\nCurrent files:\n" + ($files | map("--- " + .path + " ---\n" + .content) | join("\n\n")) + "\n\nRules:\n- Minimal, focused changes only\n- Plain JavaScript, no frameworks\n- Small single-purpose functions\n- Only modify files that need changing\n- You may only write to: root-level .js/.html/.css/.md files, js/**, hal_ops/**, scripts/**, src/**, docs/**\n- Never write to .github/, .env, Dockerfile, docker-compose, Makefile, or any config/deploy files\n\nRespond with a JSON object:\n- \"summary\": one-line description of the change\n- \"files\": array of {\"path\", \"content\"} with full updated file contents\n\nOutput ONLY valid JSON. No markdown fences. No explanation.\nIf this issue is not implementable as code, output exactly: NOT_IMPLEMENTABLE")
+                }]
+              }')")
+
+          TEXT=$(echo "$RESPONSE" | jq -r '.content[0].text // "ERROR"')
+
+          if echo "$TEXT" | grep -q "NOT_IMPLEMENTABLE"; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$TEXT" = "ERROR" ]; then
+            echo "error=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Strip markdown fences if Claude wrapped them
+          echo "$TEXT" | sed '/^```/d' > /tmp/changes.json
+
+          if ! jq empty /tmp/changes.json 2>/dev/null; then
+            echo "error=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # --- Validation gate ---
+
+          # Must have .files array with 1-10 entries
+          FILE_COUNT=$(jq '.files | length // 0' /tmp/changes.json)
+          if [ "$FILE_COUNT" -eq 0 ] || [ "$FILE_COUNT" -gt 10 ]; then
+            echo "error=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Block traversal: no absolute paths, no ../
+          BAD_PATHS=$(jq -r '.files[].path' /tmp/changes.json | grep -cE '(^/|\.\./)' || true)
+          if [ "$BAD_PATHS" -gt 0 ]; then
+            echo "error=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Path allowlist — only these locations are writable
+          #   Root-level app files: *.js, *.mjs, *.html, *.css, *.md
+          #   Directories: js/, hal_ops/, scripts/, src/, docs/
+          # Everything else is blocked, especially .github/, dotfiles, and config
+          BLOCKED=$(jq -r '.files[].path' /tmp/changes.json | grep -cvE \
+            '^(\./(index\.html|app\.js|styles\.css|README\.md|CLAUDE\.md)|\./(js|hal_ops|scripts|src|docs)/)' || true)
+          if [ "$BLOCKED" -gt 0 ]; then
+            # Also try without ./ prefix since Claude may omit it
+            BLOCKED=$(jq -r '.files[].path' /tmp/changes.json | grep -cvE \
+              '^((index\.html|app\.js|styles\.css|README\.md|CLAUDE\.md)|(js|hal_ops|scripts|src|docs)/)' || true)
+          fi
+          if [ "$BLOCKED" -gt 0 ]; then
+            echo "error=true" >> "$GITHUB_OUTPUT"
+            echo "error_detail=blocked_path" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Total bytes cap: 200KB across all files
+          TOTAL_BYTES=$(jq '[.files[].content | length] | add // 0' /tmp/changes.json)
+          if [ "$TOTAL_BYTES" -gt 204800 ]; then
+            echo "error=true" >> "$GITHUB_OUTPUT"
+            echo "error_detail=size_limit" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          SUMMARY=$(jq -r '.summary // "Implement issue changes"' /tmp/changes.json)
+          echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          echo "SUMMARY<<SUMMARY_EOF" >> "$GITHUB_OUTPUT"
+          echo "$SUMMARY" >> "$GITHUB_OUTPUT"
+          echo "SUMMARY_EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Apply changes to branch
+        if: steps.changes.outputs.has_changes == 'true'
+        id: apply
+        run: |
+          BRANCH="claude/issue-${{ github.event.issue.number }}"
+
+          git config user.name "Claude Issue Worker"
+          git config user.email "claude-worker@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+
+          COUNT=$(jq '.files | length' /tmp/changes.json)
+          for i in $(seq 0 $(($COUNT - 1))); do
+            FILE_PATH=$(jq -r ".files[$i].path" /tmp/changes.json)
+            mkdir -p "$(dirname "$FILE_PATH")"
+            jq -r ".files[$i].content" /tmp/changes.json > "$FILE_PATH"
+          done
+
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "no_diff=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "BRANCH=$BRANCH" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate changes
+        if: steps.apply.outputs.BRANCH != ''
+        id: validate
+        run: |
+          ERRORS=""
+
+          # HTML syntax: check that every opened tag file is still well-formed enough to parse
+          for f in $(git diff --name-only | grep '\.html$' || true); do
+            if [ -f "$f" ]; then
+              # Must still have <html>, <head>, <body> structure
+              if ! grep -q '<html' "$f"; then
+                ERRORS="${ERRORS}${f}: missing <html> tag\n"
+              fi
+              if ! grep -q '</html>' "$f"; then
+                ERRORS="${ERRORS}${f}: missing </html> closing tag\n"
+              fi
+            fi
+          done
+
+          # JS syntax: check with node --check
+          for f in $(git diff --name-only | grep -E '\.(js|mjs)$' || true); do
+            if [ -f "$f" ]; then
+              if ! node --check "$f" 2>/tmp/js_err; then
+                ERRORS="${ERRORS}${f}: $(cat /tmp/js_err)\n"
+              fi
+            fi
+          done
+
+          # CSS: basic brace balance check
+          for f in $(git diff --name-only | grep '\.css$' || true); do
+            if [ -f "$f" ]; then
+              OPEN=$(grep -o '{' "$f" | wc -l)
+              CLOSE=$(grep -o '}' "$f" | wc -l)
+              if [ "$OPEN" -ne "$CLOSE" ]; then
+                ERRORS="${ERRORS}${f}: mismatched braces (${OPEN} open, ${CLOSE} close)\n"
+              fi
+            fi
+          done
+
+          # No secrets or keys accidentally introduced
+          for f in $(git diff --name-only); do
+            if [ -f "$f" ]; then
+              if grep -qEi '(api_key|secret|password|token)\s*[:=]\s*["\x27][A-Za-z0-9]' "$f"; then
+                ERRORS="${ERRORS}${f}: possible hardcoded secret detected\n"
+              fi
+            fi
+          done
+
+          if [ -n "$ERRORS" ]; then
+            echo "ERRORS<<ERRORS_EOF" >> "$GITHUB_OUTPUT"
+            printf "$ERRORS" >> "$GITHUB_OUTPUT"
+            echo "ERRORS_EOF" >> "$GITHUB_OUTPUT"
+            echo "failed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "passed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push and open PR
+        if: steps.validate.outputs.passed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          SUMMARY: ${{ steps.changes.outputs.SUMMARY }}
+          BRANCH: ${{ steps.apply.outputs.BRANCH }}
+        run: |
+          git add -A
+          git commit -m "feat: ${SUMMARY}"
+          git push origin "$BRANCH"
+
+          curl -s -X POST \
+            -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/pulls" \
+            -d "$(jq -n \
+              --arg title "feat: ${SUMMARY}" \
+              --arg head "$BRANCH" \
+              --arg issue "$ISSUE_NUMBER" \
+              '{
+                title: $title,
+                body: ("## Summary\n" + $title + "\n\nCloses #" + $issue + "\n\n---\n_Auto-generated by Claude Issue Worker_"),
+                head: $head,
+                base: "main"
+              }')"
+
+          curl -s -X POST \
+            -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/issues/${ISSUE_NUMBER}/comments" \
+            -d "$(jq -n --arg branch "$BRANCH" \
+              '{body: ("🤖 **Claude Issue Worker**\n\nPR created on branch `" + $branch + "`. Please review.")}')"
+
+      - name: Comment on validation failure
+        if: steps.validate.outputs.failed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ERRORS: ${{ steps.validate.outputs.ERRORS }}
+        run: |
+          curl -s -X POST \
+            -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/issues/${ISSUE_NUMBER}/comments" \
+            -d "$(jq -n --arg errors "$ERRORS" \
+              '{body: ("🤖 **Claude Issue Worker**\n\nGenerated changes but they failed validation. No PR was opened.\n\n```\n" + $errors + "```")}')"
+
+      - name: Comment if no diff
+        if: steps.apply.outputs.no_diff == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          curl -s -X POST \
+            -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/issues/${ISSUE_NUMBER}/comments" \
+            -d '{"body":"🤖 **Claude Issue Worker**\n\nAnalyzed this issue but no code changes were needed."}'
+
+      - name: Comment if not implementable
+        if: steps.changes.outputs.skip == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          curl -s -X POST \
+            -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/issues/${ISSUE_NUMBER}/comments" \
+            -d '{"body":"🤖 **Claude Issue Worker**\n\nThis issue does not appear to require code changes. It may need discussion or clarification first."}'
+
+      - name: Comment on error
+        if: steps.changes.outputs.error == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ERROR_DETAIL: ${{ steps.changes.outputs.error_detail }}
+        run: |
+          if [ "$ERROR_DETAIL" = "blocked_path" ]; then
+            MSG="Generated changes targeted restricted paths (e.g. .github/, config files). No changes were applied."
+          elif [ "$ERROR_DETAIL" = "size_limit" ]; then
+            MSG="Generated changes exceeded the 200KB size limit. No changes were applied."
+          else
+            MSG="Hit an issue generating the implementation. Check the workflow logs for details."
+          fi
+          curl -s -X POST \
+            -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/issues/${ISSUE_NUMBER}/comments" \
+            -d "$(jq -n --arg msg "$MSG" \
+              '{body: ("🤖 **Claude Issue Worker**\n\n" + $msg)}')"
