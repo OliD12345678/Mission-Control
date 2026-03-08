@@ -7,5 +7,5 @@
 - status: pr_opened
   task: Add auto cleanup of Docker images weekly
 
-- status: pending
+- status: pr_opened
   task: Build a lead experiment generator report template
