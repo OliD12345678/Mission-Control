@@ -1,7 +1,7 @@
 # Task Brief
-**Task:** Add auto cleanup of Docker images weekly
-**Date:** Sat Mar  7 05:00:01 UTC 2026
-**Branch:** hal/2026-03-07-0500-add-auto-cleanup-of-docker-images-w
+**Task:** Build a lead experiment generator report template
+**Date:** Sun Mar  8 05:00:02 UTC 2026
+**Branch:** hal/2026-03-08-0500-build-a-lead-experiment-generator-r
 **Status:** in_progress
 
 ## Instructions for Hal
